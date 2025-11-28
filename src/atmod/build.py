@@ -1,5 +1,5 @@
-from pathlib import WindowsPath
-from typing import TypeVar
+from pathlib import Path, WindowsPath
+from typing import List, Optional, TypeVar
 
 import numpy as np
 import xarray as xr
@@ -206,3 +206,121 @@ def _write_model_chunk(chunk, **kwargs):
         chunk[var].data = model[var]
 
     return chunk
+
+
+def build_ensemble_models(
+    ahn: Raster,
+    geotop: VoxelModel,
+    bodemkaart: Mapping = None,
+    glg: Raster = None,
+    nl3d: VoxelModel = None,
+    parameters: AtlansParameters = None,
+    n_realizations: int = 100,
+    output_dir: Optional[Path] = None,
+    base_seed: int = 42,
+    holocene_only: bool = True,
+) -> List[xr.Dataset]:
+    """
+    Build ensemble of Atlantis subsurface models from lithology realizations.
+
+    Uses GeoTOP kans probability distributions to generate multiple lithology
+    realizations, enabling Monte Carlo uncertainty quantification of subsidence
+    predictions.
+
+    Parameters
+    ----------
+    ahn : Raster
+        Raster instance with AHN surface elevation data.
+    geotop : VoxelModel
+        GeoTop instance with kans_1-9 loaded (via include_kans=True).
+    bodemkaart : Mapping, optional
+        BRO Bodemkaart data for top 1.2m soil profile. Default is None.
+    glg : Raster, optional
+        GLG phreatic level data. Default is None.
+    nl3d : VoxelModel, optional
+        NL3D voxelmodel for areas outside GeoTOP coverage. Default is None.
+    parameters : AtlansParameters, optional
+        Model parameters. Default uses Atlantis defaults.
+    n_realizations : int, default 100
+        Number of lithology realizations to generate.
+    output_dir : Path, optional
+        If provided, save each model to NetCDF as atlantis_realization_XXX.nc.
+    base_seed : int, default 42
+        Base random seed. Each realization uses seed = base_seed + i.
+    holocene_only : bool, default True
+        If True, only sample Holocene materials; keep older deterministic.
+
+    Returns
+    -------
+    List[xr.Dataset]
+        List of N Atlantis model datasets, one per realization.
+
+    Examples
+    --------
+    >>> geotop = GeoTop.from_opendap(url, bbox, include_kans=True)
+    >>> models = build_ensemble_models(
+    ...     ahn=ahn, geotop=geotop, bodemkaart=bodemkaart, glg=glg,
+    ...     n_realizations=50, output_dir=Path("./ensemble")
+    ... )
+    >>> # Analyze ensemble variance
+    >>> rho_bulk_std = np.std([m['rho_bulk'] for m in models], axis=0)
+    """
+    from atmod.uncertainty import (
+        create_geotop_realization,
+        generate_lithology_ensemble,
+    )
+
+    # Validate that geotop has kans data
+    if not geotop.has_kans:
+        raise ValueError(
+            "GeoTop must have kans probability data loaded. "
+            "Use GeoTop.from_opendap(..., include_kans=True)."
+        )
+
+    if parameters is None:
+        parameters = AtlansParameters()
+
+    if output_dir is not None:
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Generate all lithology realizations upfront
+    ensemble = generate_lithology_ensemble(
+        geotop,
+        n_realizations=n_realizations,
+        holocene_only=holocene_only,
+        base_seed=base_seed,
+    )
+
+    models = []
+    for i in range(n_realizations):
+        # Extract single realization
+        sampled_lith = ensemble.isel(realization=i)
+
+        # Create GeoTop with sampled lithology
+        geotop_i = create_geotop_realization(geotop, sampled_lith)
+
+        # Build model using existing pipeline
+        model_i = build_atlantis_model(
+            ahn=ahn,
+            geotop=geotop_i,
+            nl3d=nl3d,
+            bodemkaart=bodemkaart,
+            glg=glg,
+            parameters=parameters,
+        )
+
+        # Add realization metadata
+        model_i.attrs['realization'] = i
+        model_i.attrs['seed'] = base_seed + i
+        model_i.attrs['holocene_only_sampling'] = holocene_only
+
+        if output_dir is not None:
+            model_i.to_netcdf(
+                output_dir / f'atlantis_realization_{i:03d}.nc',
+                encoding={var: COMPRESSION for var in model_i.data_vars}
+            )
+
+        models.append(model_i)
+
+    return models

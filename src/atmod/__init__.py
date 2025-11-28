@@ -1,6 +1,13 @@
 from .base import AtlansParameters
-from .build import build_atlantis_model, build_model_in_chunks
+from .build import build_atlantis_model, build_ensemble_models, build_model_in_chunks
 from .read import read_ahn, read_glg
+from .uncertainty import (
+    compute_lithology_entropy,
+    compute_mode_probability,
+    create_geotop_realization,
+    generate_lithology_ensemble,
+    sample_lithology_from_kans,
+)
 
 __version__ = "0.1.0"
 
