@@ -262,7 +262,7 @@ def create_geotop_realization(
     new_ds['lithok'] = sampled_lithology.rename('lithok')
 
     # Return new GeoTop instance with same properties
-    return GeoTopClass(new_ds, geotop.cellsize, geotop.dz, geotop.crs)
+    return GeoTopClass(new_ds, geotop.cellsize, geotop.dz, geotop.epsg)
 
 
 def compute_lithology_entropy(geotop: "GeoTop") -> xr.DataArray:
