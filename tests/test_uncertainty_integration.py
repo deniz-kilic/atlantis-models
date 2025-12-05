@@ -42,7 +42,8 @@ class TestFullSamplingWorkflow:
 
         # Step 3: Verify realization properties
         assert realization.ds['lithok'].shape == mock_geotop_with_kans.ds['lithok'].shape
-        assert realization.has_kans is True
+        # Kans is dropped by default, so has_kans should be False
+        assert realization.has_kans is False
         np.testing.assert_array_equal(realization.ds['lithok'].values, sampled.values)
 
     def test_ensemble_to_realizations_workflow(self, mock_geotop_with_kans):
@@ -54,7 +55,7 @@ class TestFullSamplingWorkflow:
           2. Extract each realization
           3. Create GeoTop object for each
           4. Verify all are valid
-        EXPECTED: N valid GeoTop realizations.
+        EXPECTED: N valid GeoTop realizations (without kans by default).
         """
         n = 5
         ensemble = generate_lithology_ensemble(
@@ -67,10 +68,10 @@ class TestFullSamplingWorkflow:
             realization = create_geotop_realization(mock_geotop_with_kans, sampled)
             realizations.append(realization)
 
-        # All should be valid GeoTop objects
+        # All should be valid GeoTop objects (kans dropped by default)
         assert len(realizations) == n
         for r in realizations:
-            assert r.has_kans
+            assert r.has_kans is False  # kans dropped by default
             assert r.ds['lithok'].shape == mock_geotop_with_kans.ds['lithok'].shape
 
 

@@ -8,14 +8,22 @@ from atmod.templates import get_full_like
 
 TYPEMIN_INT64 = np.iinfo(np.int64).min
 
+# Data source codes for provenance tracking
+SOURCE_NODATA = 0
+SOURCE_BODEMKAART = 1
+SOURCE_GEOTOP = 2
+SOURCE_NL3D = 3
+
 
 def combine_data_sources(
     ahn, geotop, parameters, nl3d=None, soilmap=None, soilmap_dicts=None
 ):
+    # Track which columns use NL3D (2D mask)
     if nl3d is not None:
-        voxelmodel = combine_geotop_nl3d(geotop, nl3d)
+        voxelmodel, uses_nl3d = combine_geotop_nl3d(geotop, nl3d)
     else:
         voxelmodel = geotop
+        uses_nl3d = np.zeros(ahn.shape, dtype=bool)
 
     # _mask_depth not as a class function because selection is too specific  # noqa: E501
     voxelmodel = _mask_depth(voxelmodel, parameters)
@@ -34,7 +42,14 @@ def combine_data_sources(
     mass_organic = get_full_like(voxelmodel, 0.0)
     mass_organic[lithoclass == Lithology.organic] = parameters.mass_fraction_organic
 
-    thickness, geology, lithology, organic = combine_voxels_and_soilmap(
+    # Initialize data_source array: start with GeoTOP (2) or NL3D (3)
+    nz = thickness.shape[2]
+    data_source = np.full(thickness.shape, SOURCE_GEOTOP, dtype=np.int8)
+    # Set NL3D source for columns where NL3D is used
+    for k in range(nz):
+        data_source[:, :, k][uses_nl3d] = SOURCE_NL3D
+
+    thickness, geology, lithology, organic, data_source = combine_voxels_and_soilmap(
         ahn.values,
         thickness,
         geology,
@@ -45,19 +60,21 @@ def combine_data_sources(
         soilmap_dicts.lithology,
         soilmap_dicts.organic,
         voxelmodel.zmin,
+        data_source,
     )
 
     voxelmodel["geology"] = (("y", "x", "z"), geology)
     voxelmodel["lithology"] = (("y", "x", "z"), lithology)
     voxelmodel["thickness"] = (("y", "x", "z"), thickness)
     voxelmodel["mass_fraction_organic"] = (("y", "x", "z"), organic)
+    voxelmodel["data_source"] = (("y", "x", "z"), data_source)
     voxelmodel["surface_level"] = (ahn.dims, ahn.values)
 
     voxelmodel.drop_vars(["strat", "lithok"])
     return voxelmodel
 
 
-def combine_geotop_nl3d(geotop: VoxelModel, nl3d: VoxelModel) -> VoxelModel:
+def combine_geotop_nl3d(geotop: VoxelModel, nl3d: VoxelModel) -> tuple:
     """
     Combine the GeoTop and NL3D voxelmodels from BRO/DINOloket. Locations where
     GeoTop is missing voxel stacks, NL3D data is filled.
@@ -71,10 +88,15 @@ def combine_geotop_nl3d(geotop: VoxelModel, nl3d: VoxelModel) -> VoxelModel:
 
     Returns
     -------
-    VoxelModel
-        Combined VoxelModel instance of GeoTop and NL3D.
+    tuple
+        (VoxelModel, uses_nl3d_mask)
+        - Combined VoxelModel instance of GeoTop and NL3D.
+        - 2D boolean mask where True means NL3D data is used.
     """
     nl3d = nl3d.select_like(geotop)
+
+    # Track which 2D columns use NL3D data
+    uses_nl3d = ~geotop.isvalid_area
 
     if np.all(geotop.isvalid_area):
         combined = geotop.ds
@@ -83,7 +105,8 @@ def combine_geotop_nl3d(geotop: VoxelModel, nl3d: VoxelModel) -> VoxelModel:
     else:
         combined = xr.where(geotop.isvalid_area, geotop.ds, nl3d.ds)
 
-    return VoxelModel(combined, geotop.cellsize, geotop.dz, geotop.epsg)
+    voxelmodel = VoxelModel(combined, geotop.cellsize, geotop.dz, geotop.epsg)
+    return voxelmodel, uses_nl3d
 
 
 def _allocate_memory_for_soilmap(voxelmodel, nlayers):
@@ -108,6 +131,7 @@ def combine_voxels_and_soilmap(
     soilmap_lithology,
     soilmap_organic,
     modelbase,
+    data_source,
 ):
     ysize, xsize = ahn.shape
     no_soil_map = TYPEMIN_INT64
@@ -117,6 +141,7 @@ def combine_voxels_and_soilmap(
             voxel_geology = geology[i, j, :]
             voxel_lithology = lithology[i, j, :]
             voxel_organic = organic[i, j, :]
+            voxel_source = data_source[i, j, :]
 
             surface = ahn[i, j]
 
@@ -125,6 +150,8 @@ def combine_voxels_and_soilmap(
             invalid_voxel_column = np.all(invalid_voxels)
 
             if invalid_surface or invalid_voxel_column:
+                # Mark invalid cells as no data
+                data_source[i, j, :] = SOURCE_NODATA
                 continue
 
             soilnr = np.int64(soilmap[i, j])
@@ -137,46 +164,54 @@ def combine_voxels_and_soilmap(
                 voxel_thickness[:first_valid] = 0.5
                 voxel_geology[:first_valid] = voxel_geology[first_valid]
                 voxel_lithology[:first_valid] = voxel_lithology[first_valid]
+                # Keep same source for filled layers
 
             surface_level_voxels = modelbase + np.nansum(voxel_thickness)
 
             surface_difference = surface - surface_level_voxels
 
             if surface_difference > 2:
-                vt, vg, vl, vo = _fill_anthropogenic(
+                vt, vg, vl, vo, vs = _fill_anthropogenic(
                     voxel_thickness,
                     voxel_geology,
                     voxel_lithology,
                     voxel_organic,
+                    voxel_source,
                     surface_difference,
                 )
 
             elif soilnr == no_soil_map or _top_is_anthropogenic(voxel_lithology):
                 if surface_level_voxels > surface:
-                    vt, vg, vl, vo = _shift_voxel_surface_down(
+                    vt, vg, vl, vo, vs = _shift_voxel_surface_down(
                         voxel_thickness,
                         voxel_geology,
                         voxel_lithology,
                         voxel_organic,
+                        voxel_source,
                         surface,
                         modelbase,
                     )
                 elif surface_level_voxels < surface:
-                    vt, vg, vl, vo = _shift_voxel_surface_up(
+                    vt, vg, vl, vo, vs = _shift_voxel_surface_up(
                         voxel_thickness,
                         voxel_geology,
                         voxel_lithology,
                         voxel_organic,
+                        voxel_source,
                         surface,
                         modelbase,
                     )
+                else:
+                    # No change needed
+                    vs = voxel_source
 
             else:
-                vt, vg, vl, vo = _combine_with_soilprofile(
+                vt, vg, vl, vo, vs = _combine_with_soilprofile(
                     voxel_thickness,
                     voxel_geology,
                     voxel_lithology,
                     voxel_organic,
+                    voxel_source,
                     soilmap_thickness[soilnr].copy(),
                     soilmap_lithology[soilnr].copy(),
                     soilmap_organic[soilnr].copy(),
@@ -188,12 +223,13 @@ def combine_voxels_and_soilmap(
             geology[i, j, :] = vg
             lithology[i, j, :] = vl
             organic[i, j, :] = vo
+            data_source[i, j, :] = vs
 
-    return thickness, geology, lithology, organic
+    return thickness, geology, lithology, organic, data_source
 
 
 @numba.njit
-def _fill_anthropogenic(thickness, geology, lithology, organic, difference):
+def _fill_anthropogenic(thickness, geology, lithology, organic, data_source, difference):
     anthropogenic = 0.0
     idx_to_fill = _get_top_voxel_idx(thickness) + 1
 
@@ -201,12 +237,14 @@ def _fill_anthropogenic(thickness, geology, lithology, organic, difference):
     geology[idx_to_fill] = geology[idx_to_fill - 1]
     lithology[idx_to_fill] = anthropogenic
     organic[idx_to_fill] = anthropogenic
-    return thickness, geology, lithology, organic
+    # Anthropogenic fill uses same source as underlying voxel
+    data_source[idx_to_fill] = data_source[idx_to_fill - 1]
+    return thickness, geology, lithology, organic, data_source
 
 
 @numba.njit
 def _shift_voxel_surface_down(
-    thickness, geology, lithology, organic, surface, modelbase
+    thickness, geology, lithology, organic, data_source, surface, modelbase
 ):
     depth_voxels = modelbase + np.cumsum(thickness)
 
@@ -220,18 +258,20 @@ def _shift_voxel_surface_down(
         geology[split_idx + 1 :] = np.nan
         lithology[split_idx + 1 :] = np.nan
         organic[split_idx + 1 :] = np.nan
+        data_source[split_idx + 1 :] = SOURCE_NODATA
     else:
         thickness[split_idx - 1] += new_thickness_voxel
         thickness[split_idx:] = np.nan
         geology[split_idx:] = np.nan
         lithology[split_idx:] = np.nan
         organic[split_idx:] = np.nan
+        data_source[split_idx:] = SOURCE_NODATA
 
-    return thickness, geology, lithology, organic
+    return thickness, geology, lithology, organic, data_source
 
 
 @numba.njit
-def _shift_voxel_surface_up(thickness, geology, lithology, organic, surface, modelbase):
+def _shift_voxel_surface_up(thickness, geology, lithology, organic, data_source, surface, modelbase):
     top_idx = _get_top_voxel_idx(thickness)
     extra_thickness = surface - (modelbase + np.nansum(thickness))
 
@@ -240,10 +280,12 @@ def _shift_voxel_surface_up(thickness, geology, lithology, organic, surface, mod
         geology[top_idx + 1] = geology[top_idx]
         lithology[top_idx + 1] = lithology[top_idx]
         organic[top_idx + 1] = organic[top_idx]
+        # Extended layer uses same source as layer below
+        data_source[top_idx + 1] = data_source[top_idx]
     else:
         thickness[top_idx] += extra_thickness
 
-    return thickness, geology, lithology, organic
+    return thickness, geology, lithology, organic, data_source
 
 
 @numba.njit
@@ -252,6 +294,7 @@ def _combine_with_soilprofile(
     geology,
     lithology,
     organic,
+    data_source,
     soil_thickness,
     soil_lithology,
     soil_organic,
@@ -272,6 +315,7 @@ def _combine_with_soilprofile(
             geology[split_idx] = geology[split_idx - 1]
             lithology[split_idx] = lithology[split_idx - 1]
             organic[split_idx] = organic[split_idx - 1]
+            # Keep same source for filled layer
 
     depth_voxel_below_split = depth_voxels[split_idx - 1]
     thickness_new_voxel = split_elevation - depth_voxel_below_split
@@ -296,14 +340,17 @@ def _combine_with_soilprofile(
     thickness[min_idx_soil:max_idx_soil] = soil_thickness
     lithology[min_idx_soil:max_idx_soil] = soil_lithology
     organic[min_idx_soil:max_idx_soil] = soil_organic
+    # Mark bodemkaart layers with SOURCE_BODEMKAART
+    data_source[min_idx_soil:max_idx_soil] = SOURCE_BODEMKAART
 
     if max_idx_soil < len(thickness):
         thickness[max_idx_soil:] = np.nan
         geology[max_idx_soil:] = np.nan
         lithology[max_idx_soil:] = np.nan
         organic[max_idx_soil:] = np.nan
+        data_source[max_idx_soil:] = SOURCE_NODATA
 
-    return thickness, geology, lithology, organic
+    return thickness, geology, lithology, organic, data_source
 
 
 @numba.njit

@@ -8,6 +8,8 @@ from atmod.merge import (
     _get_top_voxel_idx,
     _shift_voxel_surface_down,
     _shift_voxel_surface_up,
+    SOURCE_BODEMKAART,
+    SOURCE_GEOTOP,
 )
 
 
@@ -31,6 +33,12 @@ class TestCombineColumns:
     def test_voxel_organic(self):
         organic = np.repeat([50, np.nan], [10, 5])
         return organic
+
+    @pytest.fixture
+    def test_voxel_data_source(self):
+        # All voxels start from GeoTOP
+        data_source = np.full(15, SOURCE_GEOTOP, dtype=np.int8)
+        return data_source
 
     @pytest.fixture
     def test_soil_thickness(self):
@@ -73,13 +81,15 @@ class TestCombineColumns:
         test_voxel_geology,
         test_voxel_lithology,
         test_voxel_organic,
+        test_voxel_data_source,
     ):
         difference = 3.1
-        vt, vg, vl, vo = _fill_anthropogenic(
+        vt, vg, vl, vo, vs = _fill_anthropogenic(
             test_voxel_thickness,
             test_voxel_geology,
             test_voxel_lithology,
             test_voxel_organic,
+            test_voxel_data_source,
             difference,
         )
         filled_index = 10
@@ -87,6 +97,8 @@ class TestCombineColumns:
         assert vg[filled_index] == 1.0
         assert vl[filled_index] == 0.0
         assert vo[filled_index] == 0.0
+        # Data source should be inherited from layer below
+        assert vs[filled_index] == vs[filled_index - 1]
 
         remaining_nans = np.array([np.sum(np.isnan(v)) for v in [vt, vl, vo]])
         assert_array_equal(remaining_nans, 4)
@@ -98,6 +110,7 @@ class TestCombineColumns:
         test_voxel_geology,
         test_voxel_lithology,
         test_voxel_organic,
+        test_voxel_data_source,
     ):
         modelbase = -5.0
         surface = 0.05
@@ -105,11 +118,12 @@ class TestCombineColumns:
         thickness_to_shift = surface - (modelbase + np.nansum(test_voxel_thickness))
         assert_almost_equal(thickness_to_shift, 0.05)
 
-        vt, _, _, _ = _shift_voxel_surface_up(
+        vt, _, _, _, _ = _shift_voxel_surface_up(
             test_voxel_thickness,
             test_voxel_geology,
             test_voxel_lithology,
             test_voxel_organic,
+            test_voxel_data_source,
             surface,
             modelbase,
         )
@@ -126,6 +140,7 @@ class TestCombineColumns:
         test_voxel_geology,
         test_voxel_lithology,
         test_voxel_organic,
+        test_voxel_data_source,
     ):
         modelbase = -5.0
         surface = 0.15
@@ -133,11 +148,12 @@ class TestCombineColumns:
         thickness_to_shift = surface - (modelbase + np.nansum(test_voxel_thickness))
         assert_almost_equal(thickness_to_shift, 0.15)
 
-        vt, vg, vl, vo = _shift_voxel_surface_up(
+        vt, vg, vl, vo, vs = _shift_voxel_surface_up(
             test_voxel_thickness,
             test_voxel_geology,
             test_voxel_lithology,
             test_voxel_organic,
+            test_voxel_data_source,
             surface,
             modelbase,
         )
@@ -147,6 +163,7 @@ class TestCombineColumns:
         assert vg[changed_voxel_idx] == vg[changed_voxel_idx - 1]
         assert vl[changed_voxel_idx] == vl[changed_voxel_idx - 1]
         assert vo[changed_voxel_idx] == vo[changed_voxel_idx - 1]
+        assert vs[changed_voxel_idx] == vs[changed_voxel_idx - 1]
 
         new_surface_level = modelbase + np.nansum(vt)
         assert_almost_equal(new_surface_level, surface)
@@ -158,15 +175,17 @@ class TestCombineColumns:
         test_voxel_geology,
         test_voxel_lithology,
         test_voxel_organic,
+        test_voxel_data_source,
     ):
         modelbase = -5.0
         surface = -0.45
 
-        vt, vg, vl, vo = _shift_voxel_surface_down(
+        vt, vg, vl, vo, vs = _shift_voxel_surface_down(
             test_voxel_thickness,
             test_voxel_geology,
             test_voxel_lithology,
             test_voxel_organic,
+            test_voxel_data_source,
             surface,
             modelbase,
         )
@@ -187,15 +206,17 @@ class TestCombineColumns:
         test_voxel_geology,
         test_voxel_lithology,
         test_voxel_organic,
+        test_voxel_data_source,
     ):
         modelbase = -5.0
         surface = -0.25
 
-        vt, _, _, _ = _shift_voxel_surface_down(
+        vt, _, _, _, _ = _shift_voxel_surface_down(
             test_voxel_thickness,
             test_voxel_geology,
             test_voxel_lithology,
             test_voxel_organic,
+            test_voxel_data_source,
             surface,
             modelbase,
         )
@@ -212,6 +233,7 @@ class TestCombineColumns:
         test_voxel_geology,
         test_voxel_lithology,
         test_voxel_organic,
+        test_voxel_data_source,
         test_soil_thickness,
         test_soil_lithology,
         test_soil_organic,
@@ -219,11 +241,12 @@ class TestCombineColumns:
         modelbase = -5
         surface = 1.2
 
-        vt, vg, vl, vo = _combine_with_soilprofile(
+        vt, vg, vl, vo, vs = _combine_with_soilprofile(
             test_voxel_thickness,
             test_voxel_geology,
             test_voxel_lithology,
             test_voxel_organic,
+            test_voxel_data_source,
             test_soil_thickness,
             test_soil_lithology,
             test_soil_organic,
@@ -239,6 +262,8 @@ class TestCombineColumns:
         assert_equal(vg[min_idx_soil:max_idx_soil], test_voxel_geology[top_idx_geology])
         assert_equal(vl[min_idx_soil:max_idx_soil], test_soil_lithology)
         assert_equal(vo[min_idx_soil:max_idx_soil], test_soil_organic)
+        # Soilprofile layers should be marked as BODEMKAART source
+        assert np.all(vs[min_idx_soil:max_idx_soil] == SOURCE_BODEMKAART)
 
         remaining_nans = np.array([np.sum(np.isnan(v)) for v in [vt, vg, vl, vo]])
         assert_array_equal(remaining_nans, 1)
@@ -253,6 +278,7 @@ class TestCombineColumns:
         test_voxel_geology,
         test_voxel_lithology,
         test_voxel_organic,
+        test_voxel_data_source,
         test_soil_thickness,
         test_soil_lithology,
         test_soil_organic,
@@ -260,11 +286,12 @@ class TestCombineColumns:
         modelbase = -5
         surface = 0.45
 
-        vt, vg, vl, vo = _combine_with_soilprofile(
+        vt, vg, vl, vo, vs = _combine_with_soilprofile(
             test_voxel_thickness,
             test_voxel_geology,
             test_voxel_lithology,
             test_voxel_organic,
+            test_voxel_data_source,
             test_soil_thickness,
             test_soil_lithology,
             test_soil_organic,
@@ -282,6 +309,8 @@ class TestCombineColumns:
         assert_equal(vg[min_idx_soil:max_idx_soil], test_voxel_geology[top_idx_geology])
         assert_equal(vl[min_idx_soil:max_idx_soil], test_soil_lithology)
         assert_equal(vo[min_idx_soil:max_idx_soil], test_soil_organic)
+        # Soilprofile layers should be marked as BODEMKAART source
+        assert np.all(vs[min_idx_soil:max_idx_soil] == SOURCE_BODEMKAART)
 
         remaining_nans = np.array([np.sum(np.isnan(v)) for v in [vt, vg, vl, vo]])
         assert_array_equal(remaining_nans, 2)
@@ -296,6 +325,7 @@ class TestCombineColumns:
         test_voxel_geology,
         test_voxel_lithology,
         test_voxel_organic,
+        test_voxel_data_source,
         test_soil_thickness,
         test_soil_lithology,
         test_soil_organic,
@@ -303,11 +333,12 @@ class TestCombineColumns:
         modelbase = -5
         surface = 1.3
 
-        vt, vg, vl, vo = _combine_with_soilprofile(
+        vt, vg, vl, vo, vs = _combine_with_soilprofile(
             test_voxel_thickness,
             test_voxel_geology,
             test_voxel_lithology,
             test_voxel_organic,
+            test_voxel_data_source,
             test_soil_thickness,
             test_soil_lithology,
             test_soil_organic,
@@ -325,6 +356,8 @@ class TestCombineColumns:
         assert_equal(vg[min_idx_soil:max_idx_soil], test_voxel_geology[top_idx_geology])
         assert_equal(vl[min_idx_soil:max_idx_soil], test_soil_lithology)
         assert_equal(vo[min_idx_soil:max_idx_soil], test_soil_organic)
+        # Soilprofile layers should be marked as BODEMKAART source
+        assert np.all(vs[min_idx_soil:max_idx_soil] == SOURCE_BODEMKAART)
 
         no_remaining_nans = ~np.any(np.isnan(np.array([vt, vg, vl, vo])))
         assert no_remaining_nans
@@ -339,6 +372,7 @@ class TestCombineColumns:
         test_voxel_geology,
         test_voxel_lithology,
         test_voxel_organic,
+        test_voxel_data_source,
         test_soil_thickness,
         test_soil_lithology,
         test_soil_organic,
@@ -346,11 +380,12 @@ class TestCombineColumns:
         modelbase = -5
         surface = 1.204
 
-        vt, vg, vl, vo = _combine_with_soilprofile(
+        vt, vg, vl, vo, vs = _combine_with_soilprofile(
             test_voxel_thickness,
             test_voxel_geology,
             test_voxel_lithology,
             test_voxel_organic,
+            test_voxel_data_source,
             test_soil_thickness,
             test_soil_lithology,
             test_soil_organic,
@@ -367,6 +402,8 @@ class TestCombineColumns:
         assert_equal(vg[min_idx_soil:max_idx_soil], test_voxel_geology[top_idx_geology])
         assert_equal(vl[min_idx_soil:max_idx_soil], test_soil_lithology)
         assert_equal(vo[min_idx_soil:max_idx_soil], test_soil_organic)
+        # Soilprofile layers should be marked as BODEMKAART source
+        assert np.all(vs[min_idx_soil:max_idx_soil] == SOURCE_BODEMKAART)
 
         remaining_nans = np.array([np.sum(np.isnan(v)) for v in [vt, vg, vl, vo]])
         assert_array_equal(remaining_nans, 1)
@@ -381,6 +418,7 @@ class TestCombineColumns:
         test_voxel_geology,
         test_voxel_lithology,
         test_voxel_organic,
+        test_voxel_data_source,
         test_soil_thickness,
         test_soil_lithology,
         test_soil_organic,
@@ -388,11 +426,12 @@ class TestCombineColumns:
         modelbase = -5
         surface = 0.703
 
-        vt, vg, vl, vo = _combine_with_soilprofile(
+        vt, vg, vl, vo, vs = _combine_with_soilprofile(
             test_voxel_thickness,
             test_voxel_geology,
             test_voxel_lithology,
             test_voxel_organic,
+            test_voxel_data_source,
             test_soil_thickness,
             test_soil_lithology,
             test_soil_organic,
@@ -409,6 +448,8 @@ class TestCombineColumns:
         assert_equal(vg[min_idx_soil:max_idx_soil], test_voxel_geology[top_idx_geology])
         assert_equal(vl[min_idx_soil:max_idx_soil], test_soil_lithology)
         assert_equal(vo[min_idx_soil:max_idx_soil], test_soil_organic)
+        # Soilprofile layers should be marked as BODEMKAART source
+        assert np.all(vs[min_idx_soil:max_idx_soil] == SOURCE_BODEMKAART)
 
         remaining_nans = np.array([np.sum(np.isnan(v)) for v in [vt, vl, vo]])
         assert_array_equal(remaining_nans, 2)

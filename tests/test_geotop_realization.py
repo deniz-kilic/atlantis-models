@@ -48,15 +48,30 @@ class TestRealizationCreation:
             mock_geotop_with_kans.ds['strat'].values
         )
 
-    def test_realization_preserves_kans(self, mock_geotop_with_kans):
+    def test_realization_drops_kans_by_default(self, mock_geotop_with_kans):
         """
-        WHAT: Kans data is preserved in realization.
-        WHY: May want to resample or analyze probabilities.
-        LOGIC: Create realization, check kans_1-9 exist.
-        EXPECTED: All kans variables preserved.
+        WHAT: Kans data is dropped by default in realization.
+        WHY: Kans is only needed for sampling, not for Atlantis runs.
+        LOGIC: Create realization with default settings, check kans removed.
+        EXPECTED: No kans variables in realization.
         """
         sampled = sample_lithology_from_kans(mock_geotop_with_kans, seed=42)
         realization = create_geotop_realization(mock_geotop_with_kans, sampled)
+
+        for i in range(1, 10):
+            assert f'kans_{i}' not in realization.ds
+
+    def test_realization_preserves_kans_when_requested(self, mock_geotop_with_kans):
+        """
+        WHAT: Kans data is preserved when drop_kans=False.
+        WHY: May want to keep kans for debugging or analysis.
+        LOGIC: Create realization with drop_kans=False, check kans_1-9 exist.
+        EXPECTED: All kans variables preserved.
+        """
+        sampled = sample_lithology_from_kans(mock_geotop_with_kans, seed=42)
+        realization = create_geotop_realization(
+            mock_geotop_with_kans, sampled, drop_kans=False
+        )
 
         for i in range(1, 10):
             assert f'kans_{i}' in realization.ds
@@ -165,14 +180,28 @@ class TestRealizationDataIntegrity:
             original_lithok
         )
 
-    def test_realization_has_kans_property(self, mock_geotop_with_kans):
+    def test_realization_has_kans_false_by_default(self, mock_geotop_with_kans):
         """
-        WHAT: Realization has working has_kans property.
-        WHY: May want to check kans availability on realization.
-        LOGIC: Create realization, check has_kans.
-        EXPECTED: has_kans == True
+        WHAT: Realization has has_kans=False by default (kans dropped).
+        WHY: Kans is dropped by default to reduce memory for Atlantis runs.
+        LOGIC: Create realization with default settings, check has_kans.
+        EXPECTED: has_kans == False
         """
         sampled = sample_lithology_from_kans(mock_geotop_with_kans, seed=42)
         realization = create_geotop_realization(mock_geotop_with_kans, sampled)
+
+        assert realization.has_kans is False
+
+    def test_realization_has_kans_true_when_preserved(self, mock_geotop_with_kans):
+        """
+        WHAT: Realization has has_kans=True when drop_kans=False.
+        WHY: Can preserve kans for debugging or analysis.
+        LOGIC: Create realization with drop_kans=False, check has_kans.
+        EXPECTED: has_kans == True
+        """
+        sampled = sample_lithology_from_kans(mock_geotop_with_kans, seed=42)
+        realization = create_geotop_realization(
+            mock_geotop_with_kans, sampled, drop_kans=False
+        )
 
         assert realization.has_kans is True

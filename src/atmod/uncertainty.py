@@ -225,7 +225,8 @@ def generate_lithology_ensemble(
 
 def create_geotop_realization(
     geotop: "GeoTop",
-    sampled_lithology: xr.DataArray
+    sampled_lithology: xr.DataArray,
+    drop_kans: bool = True
 ) -> "GeoTop":
     """
     Create a GeoTop object with sampled lithology replacing the deterministic lithok.
@@ -239,18 +240,24 @@ def create_geotop_realization(
         Original GeoTop object (provides structure and other variables).
     sampled_lithology : xr.DataArray
         Sampled lithology array from sample_lithology_from_kans().
+    drop_kans : bool, default True
+        If True, remove kans_1-9 probability variables from the realization.
+        These are only needed for sampling and not required for Atlantis runs.
+        Set to False to preserve kans data for debugging or analysis.
 
     Returns
     -------
     GeoTop
         New GeoTop instance with lithok replaced by sampled values.
         Stratigraphy and other variables are preserved.
+        Kans variables are removed by default.
 
     Examples
     --------
     >>> sampled = sample_lithology_from_kans(geotop, seed=42)
     >>> realization = create_geotop_realization(geotop, sampled)
     >>> model = build_atlantis_model(geotop=realization, ...)
+    >>> 'kans_1' in realization.ds  # False - kans removed by default
     """
     # Import here to avoid circular imports
     from atmod.bro_models.voxelmodels import GeoTop as GeoTopClass
@@ -260,6 +267,12 @@ def create_geotop_realization(
 
     # Replace lithok with sampled values
     new_ds['lithok'] = sampled_lithology.rename('lithok')
+
+    # Remove kans variables if requested (default)
+    if drop_kans:
+        kans_vars = [v for v in new_ds.data_vars if v.startswith('kans_')]
+        if kans_vars:
+            new_ds = new_ds.drop_vars(kans_vars)
 
     # Return new GeoTop instance with same properties
     return GeoTopClass(new_ds, geotop.cellsize, geotop.dz, geotop.epsg)

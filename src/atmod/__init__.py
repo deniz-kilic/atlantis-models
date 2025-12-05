@@ -8,6 +8,25 @@ from .uncertainty import (
     generate_lithology_ensemble,
     sample_lithology_from_kans,
 )
+from .analysis_tools import (
+    compute_data_source_fractions,
+    get_data_source_3d,
+    compute_model_summary,
+    compute_holocene_statistics,
+    compute_ensemble_statistics,
+    compute_data_quality_flags,
+    compare_models,
+    plot_data_source_map,
+    plot_cross_section,
+    plot_holocene_thickness_map,
+    plot_lithology_distribution,
+    plot_ensemble_spread,
+    SOURCE_NODATA,
+    SOURCE_BODEMKAART,
+    SOURCE_GEOTOP,
+    SOURCE_NL3D,
+    SOURCE_NAMES,
+)
 
 __version__ = "0.1.0"
 
