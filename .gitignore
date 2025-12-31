@@ -130,3 +130,10 @@ ENV/
 # pixi environments
 .pixi
 *.egg-info
+
+# Development scripts and outputs (not part of package)
+scripts/
+docs/
+output/
+data/
+build_model_with_download.py
