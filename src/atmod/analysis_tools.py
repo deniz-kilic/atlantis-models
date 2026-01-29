@@ -505,7 +505,7 @@ def plot_data_source_map(
     extent = [x.min() - dx, x.max() + dx, y.min() - dy, y.max() + dy]
 
     # Plot
-    ax.imshow(rgb, origin='lower', extent=extent, aspect='equal')
+    ax.imshow(rgb, origin='upper', extent=extent, aspect='equal')
     ax.set_xlabel('X (m RD)')
     ax.set_ylabel('Y (m RD)')
     ax.set_title(title)
@@ -694,7 +694,7 @@ def plot_holocene_thickness_map(
 
     # Plot
     im = ax.imshow(
-        thickness.values, origin='lower', extent=extent,
+        thickness.values, origin='upper', extent=extent,
         cmap=cmap, vmin=vmin, vmax=vmax, aspect='equal'
     )
 
@@ -950,7 +950,7 @@ def plot_ensemble_spread(
 
     # Plot
     im = ax.imshow(
-        spread_2d.values, origin='lower', extent=extent,
+        spread_2d.values, origin='upper', extent=extent,
         cmap=cmap, aspect='equal'
     )
 
