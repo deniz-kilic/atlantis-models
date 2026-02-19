@@ -187,3 +187,71 @@ def outside_bounds_parcel():
         crs=RD_NEW_CRS,
     )
     return gdf
+
+
+@pytest.fixture
+def mock_atlans_parcel_output(sample_parcels_gdf):
+    """
+    Create mock Atlans.jl output in virtual grid format (x=N, y=1, time).
+    Used to test result remapping.
+    """
+    n_parcels = len(sample_parcels_gdf)
+    n_times = 10
+
+    # Create synthetic subsidence results (increasing over time)
+    subsidence = np.zeros((n_parcels, 1, n_times), dtype=np.float32)
+    for t in range(n_times):
+        # Each parcel subsides differently
+        for p in range(n_parcels):
+            subsidence[p, 0, t] = -0.01 * (t + 1) * (1 + p * 0.1)
+
+    return xr.Dataset(
+        {
+            "subsidence": (["x", "y", "time"], subsidence),
+            "consolidation": (["x", "y", "time"], subsidence * 0.6),
+            "oxidation": (["x", "y", "time"], subsidence * 0.3),
+            "shrinkage": (["x", "y", "time"], subsidence * 0.1),
+        },
+        coords={
+            "x": np.arange(1, n_parcels + 1, dtype=float),
+            "y": np.array([0.0]),
+            "time": np.arange(n_times),
+        },
+    )
+
+
+@pytest.fixture
+def sample_parcels_wgs84():
+    """Create sample parcels in WGS84 (EPSG:4326) for CRS transformation testing."""
+    # Approximate WGS84 coordinates for the Netherlands
+    parcels = []
+    for i in range(3):
+        # Small parcels in WGS84
+        lon_start = 4.5 + i * 0.001  # ~100m spacing
+        lat_start = 52.0
+        parcels.append(
+            box(lon_start, lat_start, lon_start + 0.0008, lat_start + 0.0008)
+        )
+
+    gdf = gpd.GeoDataFrame(
+        {"parcel_id": [f"WGS_{i+1}" for i in range(3)]},
+        geometry=parcels,
+        crs="EPSG:4326",
+    )
+    return gdf
+
+
+@pytest.fixture
+def extraction_result(sample_parcels_gdf, sample_voxelmodel, sample_ahn_raster):
+    """Pre-computed extraction result for virtual grid tests."""
+    from atmod.parcels.data import ParcelData
+    from atmod.parcels.extractor import ParcelExtractor
+
+    parcel_data = ParcelData.from_geodataframe(sample_parcels_gdf, "Perceel_ID")
+    extractor = ParcelExtractor(parcel_data, method="centroid")
+
+    return extractor.extract(
+        voxelmodel=sample_voxelmodel,
+        rasters={"surface_level": sample_ahn_raster},
+        variables_3d=["lithology", "geology", "thickness"],
+    )
