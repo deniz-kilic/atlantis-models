@@ -10,7 +10,17 @@ from atmod.base import Raster, VoxelModel
 
 def soilmap_to_raster(soilmap, da) -> Raster:
     gdf = soilmap.gdf
-    gdf["nr"] = gdf["maparea_id"].str.split(".", expand=True)[2].astype(int)
+    # Handle different maparea_id formats:
+    # - Old format: "dino.soilarea.123" -> numeric ID at position 2
+    # - New format (V2024): "V2024-1..soilarea.0000002917" -> numeric ID at position 3
+    split_ids = gdf["maparea_id"].str.split(".", expand=True)
+    # Try position 3 first (new format), then position 2 (old format)
+    if split_ids.shape[1] > 3:
+        # New format: get last column which contains the numeric ID
+        gdf["nr"] = split_ids.iloc[:, -1].astype(int)
+    else:
+        # Old format
+        gdf["nr"] = split_ids[2].astype(int)
     soilmap_da = rasterize_like(gdf, "nr", da)
     return Raster(soilmap_da, da.cellsize)
 
@@ -75,7 +85,11 @@ if __name__ == "__main__":
     print("Read soilmap")
     map_ = soilmap.read_soilmap(bbox=(xmin, ymin, xmax, ymax))
 
-    map_["nr"] = map_["maparea_id"].str.split(".", expand=True)[2].astype(int)
+    split_ids = map_["maparea_id"].str.split(".", expand=True)
+    if split_ids.shape[1] > 3:
+        map_["nr"] = split_ids.iloc[:, -1].astype(int)
+    else:
+        map_["nr"] = split_ids[2].astype(int)
 
     print("Rasterize")
     test = rasterize_like(map_, "nr", da)

@@ -9,8 +9,18 @@ from atmod.utils import _follow_gdal_conventions, get_crs_object
 
 ArrayLike = TypeVar("ArrayLike")
 
+# GeoTOP kans (probability) variables for lithology uncertainty
+KANS_VARS = [f'kans_{i}' for i in range(1, 10)]
+
 
 class GeoTop(VoxelModel):
+    """
+    GeoTOP voxel model for the Netherlands subsurface.
+
+    GeoTOP provides both deterministic lithology (lithok) and probability
+    distributions (kans_1 through kans_9) for each voxel. The kans variables
+    represent the probability of each lithology class occurring at each location.
+    """
     @classmethod
     def from_netcdf(
         cls,
@@ -18,6 +28,7 @@ class GeoTop(VoxelModel):
         data_vars: ArrayLike = None,
         bbox: tuple = None,
         lazy: bool = True,
+        include_kans: bool = False,
         **xr_kwargs,
     ):
         """
@@ -36,6 +47,9 @@ class GeoTop(VoxelModel):
         lazy : bool, optional
             If True, netcdf loads lazily. Use False for speed improvements for larger
             areas but that still fit into memory. The default is False.
+        include_kans : bool, optional
+            If True, include kans_1 through kans_9 probability variables for
+            lithology uncertainty quantification. Default is False.
 
         Returns
         -------
@@ -57,8 +71,19 @@ class GeoTop(VoxelModel):
             xmin, ymin, xmax, ymax = bbox
             ds = ds.sel(x=slice(xmin, xmax), y=slice(ymin, ymax))
 
+        # Handle data_vars selection with optional kans inclusion
         if data_vars is not None:
-            ds = ds[data_vars]
+            vars_to_load = list(data_vars)
+            if include_kans:
+                vars_to_load = vars_to_load + [k for k in KANS_VARS if k not in vars_to_load]
+            ds = ds[vars_to_load]
+        elif include_kans:
+            # Load default vars plus kans
+            default_vars = ['strat', 'lithok']
+            vars_to_load = default_vars + KANS_VARS
+            # Only select vars that exist in dataset
+            vars_to_load = [v for v in vars_to_load if v in ds.data_vars]
+            ds = ds[vars_to_load]
 
         if not lazy:
             print("Load data")
@@ -74,6 +99,7 @@ class GeoTop(VoxelModel):
         data_vars: ArrayLike = None,
         bbox: tuple = None,
         lazy: bool = True,
+        include_kans: bool = False,
         **xr_kwargs,
     ):
         """
@@ -94,6 +120,9 @@ class GeoTop(VoxelModel):
         lazy : bool, optional
             If True, netcdf loads lazily. Use False for speed improvements for larger
             areas but that still fit into memory. The default is False.
+        include_kans : bool, optional
+            If True, include kans_1 through kans_9 probability variables for
+            lithology uncertainty quantification. Default is False.
 
         Returns
         -------
@@ -101,7 +130,40 @@ class GeoTop(VoxelModel):
             GeoTop instance for the selected area.
 
         """
-        return cls.from_netcdf(url, data_vars, bbox, lazy, **xr_kwargs)
+        return cls.from_netcdf(url, data_vars, bbox, lazy, include_kans, **xr_kwargs)
+
+    @property
+    def has_kans(self) -> bool:
+        """Check if kans probability data is loaded."""
+        return all(f'kans_{i}' in self.ds for i in range(1, 10))
+
+    def validate_kans(self, tolerance: float = 5.0) -> bool:
+        """
+        Validate that kans probabilities sum to approximately 100% for valid voxels.
+
+        Parameters
+        ----------
+        tolerance : float
+            Allowed deviation from 100% (default 5.0 to account for rounding).
+
+        Returns
+        -------
+        bool
+            True if kans data is valid (sums to ~100% where data exists).
+        """
+        if not self.has_kans:
+            return False
+
+        # Sum all kans values
+        total = sum(self.ds[f'kans_{i}'] for i in range(1, 10))
+
+        # Check where data is valid (not NaN) and sums approximately to 100
+        valid_mask = ~np.isnan(total.values)
+        if not np.any(valid_mask):
+            return False
+
+        valid_totals = total.values[valid_mask]
+        return np.all(np.abs(valid_totals - 100) <= tolerance)
 
 
 class Nl3d(VoxelModel):
