@@ -2,9 +2,8 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from atmod.bro_models.voxelmodels import GeoTop
 from atmod.bro_models.geology import StratGeoTop
-
+from atmod.bro_models.voxelmodels import GeoTop
 
 # --- Existing fixtures ---
 
@@ -229,3 +228,111 @@ def mock_geotop_with_nan():
     )
 
     return GeoTop(ds, cellsize=100, dz=0.5, epsg=28992)
+
+
+# --- Mock AHN and data fixtures for build pipeline testing ---
+
+@pytest.fixture
+def mock_ahn(mock_geotop_with_kans):
+    """
+    Create synthetic AHN raster matching mock_geotop spatial extent.
+    Surface elevation at ~1m NAP (typical Dutch polder).
+    """
+    from atmod.base import Raster
+
+    x = mock_geotop_with_kans.ds.x.values
+    y = mock_geotop_with_kans.ds.y.values
+
+    # Create surface elevation data (1-2m NAP, typical low-lying area)
+    xx, yy = np.meshgrid(x, y)
+    elevation = 1.0 + 0.5 * np.sin(xx / 500) + 0.3 * np.cos(yy / 500)
+
+    da = xr.DataArray(
+        elevation.astype(np.float32),
+        dims=['y', 'x'],
+        coords={'x': x, 'y': y},
+        name='elevation'
+    )
+    da = da.rio.write_crs(28992)
+
+    return Raster(da, cellsize=100, crs=28992)
+
+
+@pytest.fixture
+def mock_atlans_output():
+    """
+    Create mock Atlans.jl output with subsidence results.
+    Format: (x, y, time) with standard output variables.
+    Used to test result remapping.
+    """
+    nx, ny = 10, 1
+    nt = 5
+    x = np.arange(100, 100 + nx * 100, 100) + 50
+    y = np.array([150.0])
+    time = np.arange(nt)
+
+    # Create synthetic subsidence results (increasing over time)
+    subsidence = np.zeros((nx, ny, nt), dtype=np.float32)
+    for t in range(nt):
+        subsidence[:, :, t] = -0.01 * (t + 1)  # -1cm per timestep
+
+    ds = xr.Dataset(
+        {
+            'subsidence': (['x', 'y', 'time'], subsidence),
+            'consolidation': (['x', 'y', 'time'], subsidence * 0.6),
+            'oxidation': (['x', 'y', 'time'], subsidence * 0.3),
+            'shrinkage': (['x', 'y', 'time'], subsidence * 0.1),
+        },
+        coords={'x': x, 'y': y, 'time': time}
+    )
+
+    return ds
+
+
+@pytest.fixture
+def mock_complete_atlantis_model(mock_geotop_with_kans):
+    """
+    Create a complete Atlantis model dataset for testing build pipelines.
+    Contains all required variables for analysis.
+    """
+    from atmod.analysis_tools import SOURCE_BODEMKAART, SOURCE_GEOTOP
+
+    x = mock_geotop_with_kans.ds.x.values
+    y = mock_geotop_with_kans.ds.y.values
+    z = mock_geotop_with_kans.ds.z.values
+
+    nx, ny, nz = len(x), len(y), len(z)
+    shape = (ny, nx, nz)
+
+    # Create standard model variables
+    thickness = np.full(shape, 0.5, dtype=np.float32)
+    lithology = np.full(shape, 2.0, dtype=np.float32)  # clay
+    geology = np.full(shape, 1, dtype=np.int32)  # Holocene
+    mass_organic = np.full(shape, 0.1, dtype=np.float32)
+    rho_bulk = np.full(shape, 833.0, dtype=np.float32)
+    mass_lutum = np.full(shape, 0.3, dtype=np.float32)
+    shrinkage_degree = np.full(shape, 0.7, dtype=np.float32)
+
+    # Data source tracking
+    data_source = np.full(shape, SOURCE_GEOTOP, dtype=np.int8)
+    data_source[:, :, -1] = SOURCE_BODEMKAART  # top layer from bodemkaart
+
+    # 2D variables
+    surface_level = np.full((ny, nx), 1.0, dtype=np.float32)
+    phreatic_level = np.full((ny, nx), -0.5, dtype=np.float32)
+
+    return xr.Dataset(
+        {
+            'thickness': (['y', 'x', 'z'], thickness),
+            'lithology': (['y', 'x', 'z'], lithology),
+            'geology': (['y', 'x', 'z'], geology),
+            'mass_fraction_organic': (['y', 'x', 'z'], mass_organic),
+            'rho_bulk': (['y', 'x', 'z'], rho_bulk),
+            'mass_fraction_lutum': (['y', 'x', 'z'], mass_lutum),
+            'shrinkage_degree': (['y', 'x', 'z'], shrinkage_degree),
+            'data_source': (['y', 'x', 'z'], data_source),
+            'surface_level': (['y', 'x'], surface_level),
+            'phreatic_level': (['y', 'x'], phreatic_level),
+        },
+        coords={'x': x, 'y': y, 'z': z}
+    )

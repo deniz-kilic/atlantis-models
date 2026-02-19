@@ -27,9 +27,10 @@ import numpy as np
 import xarray as xr
 
 if TYPE_CHECKING:
-    import matplotlib.figure
     import matplotlib.axes
-    from atmod.base import AtlansParameters, Raster, VoxelModel, Mapping
+    import matplotlib.figure
+
+    from atmod.base import AtlansParameters, Mapping, Raster, VoxelModel
 
 
 # =============================================================================

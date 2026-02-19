@@ -14,15 +14,14 @@ from atmod.analysis_tools import (
     SOURCE_GEOTOP,
     SOURCE_NL3D,
     SOURCE_NODATA,
-    compute_data_source_fractions,
-    get_data_source_3d,
-    compute_model_summary,
-    compute_holocene_statistics,
-    compute_ensemble_statistics,
-    compute_data_quality_flags,
     compare_models,
+    compute_data_quality_flags,
+    compute_data_source_fractions,
+    compute_ensemble_statistics,
+    compute_holocene_statistics,
+    compute_model_summary,
+    get_data_source_3d,
 )
-
 
 # =============================================================================
 # Fixtures
@@ -383,7 +382,7 @@ class TestDataQualityFlags:
 
         assert 'uses_nl3d' in result
         # Corner (4,4) uses NL3D
-        assert result['uses_nl3d'].values[4, 4] == True
+        assert result['uses_nl3d'].values[4, 4]
 
     def test_detects_data_gaps(self, mock_atlantis_model):
         """
@@ -394,7 +393,7 @@ class TestDataQualityFlags:
 
         assert 'has_gaps' in result
         # Column 4 has all NaN in our mock
-        assert result['has_gaps'].values[0, 4] == True
+        assert result['has_gaps'].values[0, 4]
 
 
 # =============================================================================
@@ -486,3 +485,140 @@ class TestAnalysisWorkflow:
         # Verify statistics are sensible
         assert stats['mass_fraction_organic_std'].values.max() < 1.0
         assert stats.attrs['n_realizations'] == 5
+
+
+# =============================================================================
+# Visualization Smoke Tests
+# =============================================================================
+
+@pytest.mark.unittest
+class TestVisualizationSmoke:
+    """
+    Smoke tests for visualization functions.
+
+    TESTS: Functions run without crashing with valid input
+    DOES NOT TEST: Visual correctness, plot aesthetics, file output
+    """
+
+    @pytest.fixture
+    def source_fractions(self, mock_atlantis_model):
+        """Pre-computed source fractions for visualization tests."""
+        return compute_data_source_fractions(mock_atlantis_model)
+
+    @pytest.fixture
+    def ensemble_stats(self, mock_atlantis_model):
+        """Pre-computed ensemble statistics for visualization tests."""
+        models = [mock_atlantis_model.copy(deep=True) for _ in range(3)]
+        for i, m in enumerate(models):
+            m['lithology'] = m['lithology'] + i * 0.1
+        return compute_ensemble_statistics(models, variables=['lithology'])
+
+    def test_plot_data_source_map_runs(self, source_fractions):
+        """
+        WHAT: Verify plot_data_source_map doesn't crash.
+        WHY: Function must execute without error.
+        """
+        import matplotlib
+        matplotlib.use('Agg')  # Non-interactive backend for testing
+        import matplotlib.pyplot as plt
+
+        from atmod.analysis_tools import plot_data_source_map
+
+        fig = plot_data_source_map(source_fractions)
+        assert fig is not None
+        plt.close(fig)
+
+    def test_plot_data_source_map_with_ax(self, source_fractions):
+        """
+        WHAT: Verify plot_data_source_map works with custom axes.
+        WHY: Users should be able to compose plots.
+        """
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+
+        from atmod.analysis_tools import plot_data_source_map
+
+        fig, ax = plt.subplots()
+        result_fig = plot_data_source_map(source_fractions, ax=ax)
+        assert result_fig is fig
+        plt.close(fig)
+
+    def test_plot_cross_section_runs(self, mock_atlantis_model):
+        """
+        WHAT: Verify plot_cross_section doesn't crash.
+        WHY: Function must execute without error.
+        """
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+
+        from atmod.analysis_tools import plot_cross_section
+
+        start = (150.0, 150.0)
+        end = (450.0, 450.0)
+        fig = plot_cross_section(mock_atlantis_model, start, end, variable='lithology')
+        assert fig is not None
+        plt.close(fig)
+
+    def test_plot_holocene_thickness_map_runs(self, mock_atlantis_model):
+        """
+        WHAT: Verify plot_holocene_thickness_map doesn't crash.
+        WHY: Function must execute without error.
+        """
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+
+        from atmod.analysis_tools import plot_holocene_thickness_map
+
+        stats = compute_holocene_statistics(mock_atlantis_model)
+        fig = plot_holocene_thickness_map(stats)
+        assert fig is not None
+        plt.close(fig)
+
+    def test_plot_lithology_distribution_runs(self, mock_atlantis_model):
+        """
+        WHAT: Verify plot_lithology_distribution doesn't crash.
+        WHY: Function must execute without error.
+        """
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+
+        from atmod.analysis_tools import plot_lithology_distribution
+
+        fig = plot_lithology_distribution(mock_atlantis_model)
+        assert fig is not None
+        plt.close(fig)
+
+    def test_plot_lithology_distribution_with_names(self, mock_atlantis_model):
+        """
+        WHAT: Verify plot works with custom lithology names.
+        WHY: Users may want custom labels.
+        """
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+
+        from atmod.analysis_tools import plot_lithology_distribution
+
+        names = {2: 'Clay', 5: 'Fine Sand'}
+        fig = plot_lithology_distribution(mock_atlantis_model, lithology_names=names)
+        assert fig is not None
+        plt.close(fig)
+
+    def test_plot_ensemble_spread_runs(self, ensemble_stats):
+        """
+        WHAT: Verify plot_ensemble_spread doesn't crash.
+        WHY: Function must execute without error.
+        """
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+
+        from atmod.analysis_tools import plot_ensemble_spread
+
+        fig = plot_ensemble_spread(ensemble_stats, variable='lithology', metric='std')
+        assert fig is not None
+        plt.close(fig)
