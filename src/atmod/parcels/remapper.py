@@ -183,7 +183,6 @@ class ParcelResultMapper:
         variables: list[str],
     ) -> xr.Dataset:
         """Create output dataset with parcel_id dimension."""
-        n_parcels = self.mapping_info["n_parcels"]
         parcel_ids = np.array(self.mapping_info["parcel_id"])
         centroids_x = np.array(self.mapping_info["centroid_x"])
         centroids_y = np.array(self.mapping_info["centroid_y"])

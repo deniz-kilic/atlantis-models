@@ -10,10 +10,11 @@ import numpy as np
 from numpy.typing import ArrayLike
 from rasterio import features
 from scipy import stats
-from shapely.geometry import Polygon, MultiPolygon
+from shapely.geometry import MultiPolygon, Polygon
 
 if TYPE_CHECKING:
     import geopandas as gpd
+
     from atmod.base import Raster, VoxelModel
 
 logger = logging.getLogger(__name__)
@@ -72,8 +73,6 @@ def aggregate_2d(
     """
     if isinstance(method, str):
         method = AggregationMethod(method)
-
-    n_parcels = len(geometries)
 
     if method == AggregationMethod.CENTROID:
         return _aggregate_2d_centroid(geometries, raster, centroids)

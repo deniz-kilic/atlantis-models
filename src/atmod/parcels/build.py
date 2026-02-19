@@ -257,7 +257,6 @@ def _add_atlans_variables(
     # Get shapes
     n_y = ds.dims["y"]
     n_x = ds.dims["x"]
-    n_z = ds.dims["z"]
 
     # Add zbase (model base elevation)
     if "zbase" not in ds:

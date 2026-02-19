@@ -33,17 +33,17 @@ Example usage:
 
 __version__ = "0.1.0"
 
-from atmod.parcels.data import ParcelData, ParcelModelConfig
 from atmod.parcels.aggregation import (
     AggregationMethod,
     aggregate_2d,
     aggregate_3d,
     aggregate_3d_probability,
 )
-from atmod.parcels.extractor import ParcelExtractor, ExtractionResult
-from atmod.parcels.virtual_grid import VirtualGridBuilder, create_virtual_grid
+from atmod.parcels.build import build_parcel_forcing, build_parcel_model
+from atmod.parcels.data import ParcelData, ParcelModelConfig
+from atmod.parcels.extractor import ExtractionResult, ParcelExtractor
 from atmod.parcels.remapper import ParcelResultMapper, remap_parcel_results
-from atmod.parcels.build import build_parcel_model, build_parcel_forcing
+from atmod.parcels.virtual_grid import VirtualGridBuilder, create_virtual_grid
 
 __all__ = [
     # Data structures

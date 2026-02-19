@@ -450,8 +450,9 @@ class ParcelModelConfig:
         path : str or Path
             Path to save YAML configuration file.
         """
-        import yaml
         from dataclasses import asdict
+
+        import yaml
 
         with open(path, "w") as f:
             yaml.dump(asdict(self), f, default_flow_style=False)
