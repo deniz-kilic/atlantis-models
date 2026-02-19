@@ -5,10 +5,11 @@ This module provides functionality to add unique cell identifiers to NetCDF mode
 enabling spatial subsetting and area-specific analysis.
 """
 
-import numpy as np
-import netCDF4 as nc
-from typing import Optional
 from pathlib import Path
+from typing import Optional
+
+import netCDF4 as nc
+import numpy as np
 
 
 def calculate_cell_ids(surface_level: np.ndarray) -> np.ndarray:
@@ -193,7 +194,7 @@ def _add_cellid_chunked(input_path: str, output_path: str, chunk_size: int):
     3. Write cell_id in chunks
     """
     print(f"\n{'='*70}")
-    print(f"Adding Cell ID to NetCDF File")
+    print("Adding Cell ID to NetCDF File")
     print(f"{'='*70}")
     print(f"Input:  {input_path}")
     print(f"Output: {output_path}")
@@ -215,7 +216,7 @@ def _add_cellid_chunked(input_path: str, output_path: str, chunk_size: int):
     surface_level = ds_in.variables['surface_level'][:]
 
     # Calculate cell IDs
-    print(f"  Calculating cell IDs...")
+    print("  Calculating cell IDs...")
     cell_id = calculate_cell_ids(surface_level)
 
     n_valid = np.sum(~np.isnan(cell_id))
@@ -326,7 +327,7 @@ def _add_cellid_chunked(input_path: str, output_path: str, chunk_size: int):
 
     print()
     print(f"{'='*70}")
-    print(f"✓ Complete!")
+    print("✓ Complete!")
     print(f"{'='*70}")
     print(f"Output file: {output_path}")
     print(f"File size: {file_size_mb:.1f} MB")

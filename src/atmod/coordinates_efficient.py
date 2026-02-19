@@ -6,9 +6,10 @@ very large NetCDF files without loading the entire dataset into memory.
 Uses netCDF4 library for direct file modification.
 """
 
-import numpy as np
-import netCDF4 as nc
 from typing import Optional
+
+import netCDF4 as nc
+import numpy as np
 
 
 def calculate_level_coordinate_chunked(
@@ -142,7 +143,7 @@ def _process_file_chunked(input_path: str, output_path: str, chunk_size: int):
     - Does NOT load any data arrays
     """
     print(f"\n{'='*70}")
-    print(f"Memory-Efficient Level Coordinate Calculation")
+    print("Memory-Efficient Level Coordinate Calculation")
     print(f"{'='*70}")
     print(f"Input:  {input_path}")
     print(f"Output: {output_path}")
@@ -290,7 +291,7 @@ def _process_file_chunked(input_path: str, output_path: str, chunk_size: int):
         # Sync to disk to free buffer memory
         ds_out.sync()
 
-        print(f"    Written to output file")
+        print("    Written to output file")
 
         """
         Step 3d: Release chunk from memory
@@ -301,7 +302,7 @@ def _process_file_chunked(input_path: str, output_path: str, chunk_size: int):
         - Ready for next chunk
         """
         del thickness_chunk, level_chunk
-        print(f"    Released chunk from memory")
+        print("    Released chunk from memory")
         print()
 
     """
@@ -363,7 +364,7 @@ def _process_file_chunked(input_path: str, output_path: str, chunk_size: int):
 
     print()
     print(f"{'='*70}")
-    print(f"✓ Complete!")
+    print("✓ Complete!")
     print(f"{'='*70}")
     print(f"Output file: {output_path}")
     print(f"File size: {file_size_mb:.1f} MB")

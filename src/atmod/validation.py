@@ -6,10 +6,11 @@ to ensure they meet all requirements for Atlantis Julia subsidence modeling
 and optionally for ArcGIS compatibility.
 """
 
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Tuple
+
 import numpy as np
 import xarray as xr
-from dataclasses import dataclass, field
-from typing import List, Dict, Optional, Tuple
 
 
 @dataclass
