@@ -579,11 +579,9 @@ def plot_cross_section(
     # Get z/layer coordinates (models can have either 'z' or 'layer' dimension)
     if 'z' in model.coords:
         z_coords = model.coords['z'].values
-        z_dim = 'z'
     elif 'layer' in model.dims:
         # For layer-based models, use layer indices or domainbase if available
         z_coords = np.arange(model.dims['layer'])
-        z_dim = 'layer'
     else:
         raise ValueError("Model must have either 'z' coordinate or 'layer' dimension")
 
@@ -1000,7 +998,6 @@ def compute_data_quality_flags(
     """
     y_coords = model.coords['y'].values
     x_coords = model.coords['x'].values
-    shape = (len(y_coords), len(x_coords))
     coords = {'y': y_coords, 'x': x_coords}
 
     result = xr.Dataset()

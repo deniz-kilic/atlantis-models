@@ -5,11 +5,11 @@ This module provides functions to add CF-1.8 compliant metadata and CRS informat
 to make NetCDF files compatible with ArcGIS Pro.
 """
 
+from pathlib import Path
+from typing import Dict, Optional
+
 import netCDF4 as nc
 import numpy as np
-from pathlib import Path
-from typing import Optional, Dict
-
 
 # Standard metadata for all Atlantis subsurface model variables
 VARIABLE_METADATA = {
@@ -322,12 +322,12 @@ def _process_file_chunked(
     # Check if file has 'level' auxiliary coordinate
     has_level_coord = 'level' in ds_in.variables
     if has_level_coord:
-        print(f"  ✓ Found 'level' auxiliary coordinate - will link 3D variables")
+        print("  ✓ Found 'level' auxiliary coordinate - will link 3D variables")
 
     # Check if we need to calculate cell_id
     cell_id_array = None
     if add_cell_id and 'surface_level' in ds_in.variables:
-        print(f"\n  Calculating cell_id from surface_level...")
+        print("\n  Calculating cell_id from surface_level...")
         from .cellid import calculate_cell_ids
         surface_level = ds_in.variables['surface_level'][:]
         cell_id_array = calculate_cell_ids(surface_level)
@@ -400,7 +400,6 @@ def _process_file_chunked(
 
     print("\nStep 3: Copying data in chunks...")
     ny = dims.get('y', 0)
-    nx = dims.get('x', 0)
     n_chunks = (ny + chunk_size - 1) // chunk_size if ny > 0 else 1
 
     # Track coordinates for actual_range
