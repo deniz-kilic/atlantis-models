@@ -255,3 +255,106 @@ def extraction_result(sample_parcels_gdf, sample_voxelmodel, sample_ahn_raster):
         rasters={"surface_level": sample_ahn_raster},
         variables_3d=["lithology", "geology", "thickness"],
     )
+
+
+# =============================================================================
+# Benchmark fixtures with real Krimpenerwaard data
+# =============================================================================
+
+# Paths to real benchmark data (relative to workspace root)
+BENCHMARK_SUBSURFACE_PATH = (
+    "/home/kilic009/Documents/atlans_models_dev/data/Krimpenerwaard/"
+    "subsurface_krimpenerwaard_new.nc"
+)
+BENCHMARK_PARCELS_PATH = (
+    "/home/kilic009/Documents/atlans_models_dev/sample/shp_parcels/"
+    "parcels_SOMERS.shp"
+)
+
+
+def _load_parcels_for_benchmark(n_parcels: int = 500):
+    """
+    Load parcels from real shapefile, handling pyproj CRS issues.
+
+    Uses raw pyogrio to avoid pyproj CRS parsing errors in some environments.
+    """
+    import pandas as pd
+    import pyogrio.raw
+    from shapely import wkb
+
+    result = pyogrio.raw.read(BENCHMARK_PARCELS_PATH)
+    meta, _, geometry, field_data = result
+
+    # Build DataFrame from field data
+    columns = meta["fields"]
+    df = pd.DataFrame({col: field_data[i] for i, col in enumerate(columns)})
+
+    # Convert WKB geometries to shapely objects
+    geometries = [wkb.loads(g) for g in geometry]
+
+    # Create GeoDataFrame with explicit CRS
+    gdf = gpd.GeoDataFrame(df, geometry=geometries, crs=RD_NEW_CRS)
+
+    # Return subset for benchmarking
+    return gdf.iloc[:n_parcels].copy()
+
+
+@pytest.fixture(scope="module")
+def benchmark_data():
+    """
+    Real benchmark data from Krimpenerwaard for performance testing.
+
+    Uses 500 parcels subset for fast, consistent benchmarks (~30 sec baseline).
+
+    Returns
+    -------
+    dict with keys:
+        - dataset: xr.Dataset (148×211×282 grid)
+        - parcels: gpd.GeoDataFrame (500 parcels)
+        - n_parcels: int (500)
+        - n_layers: int (282)
+    """
+    import os
+
+    # Skip if data files don't exist (e.g., in CI environment)
+    if not os.path.exists(BENCHMARK_SUBSURFACE_PATH):
+        pytest.skip(f"Benchmark data not found: {BENCHMARK_SUBSURFACE_PATH}")
+    if not os.path.exists(BENCHMARK_PARCELS_PATH):
+        pytest.skip(f"Benchmark data not found: {BENCHMARK_PARCELS_PATH}")
+
+    # Load subsurface model
+    ds = xr.open_dataset(BENCHMARK_SUBSURFACE_PATH)
+
+    # Load parcels (500 for fast benchmarks)
+    gdf = _load_parcels_for_benchmark(n_parcels=500)
+
+    return {
+        "dataset": ds,
+        "parcels": gdf,
+        "n_parcels": len(gdf),
+        "n_layers": ds.sizes.get("layer", ds.sizes.get("z", 282)),
+    }
+
+
+@pytest.fixture(scope="module")
+def benchmark_voxelmodel(benchmark_data):
+    """
+    Create VoxelModel from benchmark dataset for use with existing API.
+
+    Note: VoxelModel expects 'z' dimension, so we rename 'layer' to 'z'.
+    """
+    ds = benchmark_data["dataset"]
+
+    # Determine cell size from coordinates
+    x_coords = ds.x.values
+    cellsize = abs(x_coords[1] - x_coords[0]) if len(x_coords) > 1 else 100.0
+
+    # Rename 'layer' to 'z' if needed (VoxelModel expects 'z')
+    if "layer" in ds.dims and "z" not in ds.dims:
+        ds = ds.rename({"layer": "z"})
+
+    # Determine layer thickness
+    z_coords = ds.z.values
+    dz = abs(z_coords[1] - z_coords[0]) if len(z_coords) > 1 else 0.5
+
+    return VoxelModel(ds, cellsize=cellsize, dz=dz, epsg=28992)
